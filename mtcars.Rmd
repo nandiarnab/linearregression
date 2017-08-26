@@ -1,0 +1,113 @@
+---
+title: "A comparative analysis of manual vs. automatic transmission in cars"
+author: "Arnab Nandi"
+date: "19/08/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Executive Summary
+Recently, Motor Trend comissioned an analysis of automatic vs. manual transmission for cars. We were interested in answering the following two questions: -
+
+* Is an automatic or manual transmission better for MPG? - We find that manual transmission is generally better for car mileage, holding all other variables constant (see Appendix 2 for a zone between 2500-3500 lbs where automatic transmission sometimes performs better than manual transmission).
+
+* What is the MPG difference between automatic and manual transmissions? - Miles per gallon difference between automatic and manual trasmission is about 1.21 mpg holding all other variables constant, with 95% confidence interval as (-5.70, 8.06). Given the interval crosses 0, we cannot reject the null hypothesis, that transmission type has no impact on miles per gallon.
+
+## Effect of transmission type on miles per gallon
+The data used below is extracted from the 1974 Motor Trend US magazine, and comprises fuel consumption and 10 aspects of automobile design and performance for 32 automobiles (1973–74 models). Their transmission systems and their MPG are shown in Appendix 1. Plotting the MPG vs. Transmission type would suggest that Manual transmission seems to go further in miles per gallon, than Automatic transmission.
+```{r plot1, echo=FALSE, message = FALSE, warning = FALSE, fig.height = 3, fig.width = 9, fig.align = 'center'}
+mtcars$cyl <- as.factor(mtcars$cyl)
+mtcars$carb <- as.factor(mtcars$carb)
+mtcars$am <- as.factor(mtcars$am)
+mtcars$gear <- as.factor(mtcars$gear)
+library(ggplot2)
+df <- data.frame(rownames(mtcars), ifelse(mtcars$am == 0, "Automatic", "Manual"), mtcars$mpg)
+names(df) <- c("Car", "Transmission", "MPG")
+g <- ggplot(df, aes(x = Transmission, y = MPG, fill = Transmission))
+g <- g + geom_boxplot()
+g <- g + xlab("Transmission Type")
+g <- g + ylab("Miles per gallon")
+print(g)
+```
+##Simple linear regression of mpg vs. transmission type
+Fitting a linear model with mpg as the outcome, and transmission (am in the dataset mtcars) as the predictor, mpg = b0 + b1 * am, shows that mpg is strongly correlated to transmission.
+```{r analysis1, echo=FALSE, message = FALSE, warning = FALSE}
+mdl0 <- lm(mpg ~ am, mtcars)
+print(summary(mdl0)$coefficients)
+```
+## Digging deeper
+We need to understand whether one or many of othe variables have a correlation to miles per gallon, and are confounding this analysis. Fitting a linear model including all variables shows the following: -
+```{r analysis2, echo=FALSE, message = FALSE, warning = FALSE}
+mdl <- lm(mpg ~ ., mtcars)
+print(summary(mdl)$coefficients)
+```
+We see that the effect of manual transmission (am1) on mpg reduces from `r round(mdl0$coefficients['am1'], 2)` to `r round(mdl$coefficients['am1'], 2)` confirming our hypothesis that other variables were confounding the analysis.
+
+## Parsimonious model
+However, how are we assured that the standard errors are not being inflated, due to throwing in uncorrelated variables into the model? We form a hypthesis that weight of the car, the displacement and horsepower of the engine are covariates in addition to the transmission type in predicting the miles per gallon for the car. We will create 3 additional linear models: -
+
+1. mpg = b0 (showing the variance of the mean of the miles per gallon)
+2. mpg = b0 + b1 * am (add transmission type - this is what is shown above) 
+3. mpg = b0 + b1 * am + b2 * wt (add weight of the car in 1000's of pounds)
+4. mpg = b0 + b1 * am + b2 * wt + b3 * disp (add displacement in cubic in.)
+5. mpg = b0 + b1 * am + b2 * wt + b3 * disp + b4 * hp (add engine horsepower)
+6. mpg ~ . (add all variables as predictors)
+
+```{r analysis3, echo=FALSE, message = FALSE, warning = FALSE, fig.width = 20, fig.align = 'center'}
+mdl1 <- lm(mpg ~ 1, mtcars)
+mdl2 <- lm(mpg ~ am, mtcars)
+mdl3 <- lm(mpg ~ am + wt, mtcars)
+mdl4 <- lm(mpg ~ am + wt + disp, mtcars)
+mdl5 <- lm(mpg ~ am + wt + disp + hp, mtcars)
+mdl6 <- lm(mpg ~ ., mtcars)
+e = c(resid(mdl1), 
+      resid(mdl2), 
+      resid(mdl3), 
+      resid(mdl4), 
+      resid(mdl5),
+      resid(mdl6))
+
+fit = factor(
+    c(rep("1. Mean of MPG", nrow(mtcars)), 
+      rep("2. MPG ~ Transmission (Automatic/Manual)", nrow(mtcars)), 
+      rep("3. MPG ~ Transmission + Wt. of car (1000lbs)", nrow(mtcars)), 
+      rep("4. MPG ~ Transmission + Wt. + Engine Disp (in^3)", nrow(mtcars)), 
+      rep("5. MPG ~ Transmission + Wt. + Disp + Engine Horsepower", nrow(mtcars)), 
+      rep("6. MPG ~ .", nrow(mtcars))))
+g <- ggplot(data.frame(e = e, fit = fit), aes(y = e, x = fit, fill = fit))
+g <- g + geom_dotplot(binaxis = "y", stackdir = "center", binwidth = 0.5, show.legend = F)
+g <- g + xlab("Model Selection")
+g <- g + ylab("Residual Variation")
+print(g)
+```
+Taking weight, displacement, horsepower, and transmission type into account, we are able to parsimoniously explain the total variation in miles per gallon almost completely, comparing r-squared of model 6 (`r summary(mdl6)$r.squared`) vs. model 5 (`r summary(mdl5)$r.squared`). 
+So, in summary, if we hold all other variables constant, moving from automatic to manual transmission type will result in a `r round(mdl6$coef['am1'], 2)` mpg increase in mileage of the car. The confidence interval around this estimate is: -
+```{r confint, echo = FALSE, message = FALSE, warning = FALSE}
+confint(mdl6, 'am1')
+```
+## Appendix 1 - Cars in the sample dataset, with transmission type and miles per gallon
+```{r appendix1, echo=FALSE}
+print(df)
+```
+## Appendix 2 - Miles per gallon vs. weight of the car, coloured by transmission type
+```{r appendix2, echo=FALSE, message = FALSE, warning = FALSE, fig.width = 20, fig.align = 'center'}
+g <- ggplot(mtcars, aes(x = wt, y = mpg, colour = factor(ifelse(am == 1, "Manual", "Automatic"))))
+g <- g + geom_point()
+g <- g + xlab("Weight of car (1000lbs)")
+g <- g + ylab("Miles per gallon")
+g <- g + labs(colour = "Transmission Type")
+g <- g + geom_smooth(method = "lm", se = TRUE)
+print(g)
+```
+## Appendix 3 - Plot of the mpg against transmission type, displacement, horsepower and wt
+```{r appendix3, echo=FALSE, message = FALSE, warning = FALSE, fig.width = 20, fig.align = 'center'}
+plot(mdl5)
+```
+## Appendix 4 - Plot of the mpg against all regressors
+```{r appendix4, echo=FALSE, message = FALSE, warning = FALSE, fig.width = 20, fig.align = 'center'}
+plot(mdl6)
+```
